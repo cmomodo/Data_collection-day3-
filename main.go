@@ -15,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/athena"
 	"github.com/aws/aws-sdk-go-v2/service/glue"
+	"github.com/aws/aws-sdk-go-v2/service/glue/types"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/joho/godotenv"
 )
@@ -92,7 +93,7 @@ func createS3Bucket(client *s3.Client) error {
 
 func createGlueDatabase(client *glue.Client) error {
     _, err := client.CreateDatabase(context.TODO(), &glue.CreateDatabaseInput{
-        DatabaseInput: &glue.DatabaseInput{
+        DatabaseInput: &types.DatabaseInput{
             Name: aws.String(glueDBName),
         },
     })
