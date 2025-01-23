@@ -167,14 +167,17 @@ func fetchNBAData() ([]map[string]interface{}, error) {
 }
 
 func uploadDataToS3(client *s3.Client, bucketName string, data []map[string]interface{}) error {
-	jsonData := convertToLineDelimitedJSON(data)
-	body := io.NopCloser(strings.NewReader(jsonData))
-	_, err := client.PutObject(context.TODO(), &s3.PutObjectInput{
-		Bucket: aws.String(bucketName),
-		Key:    aws.String("nba_data.json"),
-		Body:   body,
-	})
-	return err
+    jsonData := convertToLineDelimitedJSON(data)
+    contentLength := int64(len(jsonData))
+    body := io.NopCloser(strings.NewReader(jsonData))
+
+    _, err := client.PutObject(context.TODO(), &s3.PutObjectInput{
+        Bucket:        aws.String(bucketName),
+        Key:           aws.String("nba_data.json"),
+        Body:          body,
+        ContentLength: &contentLength, // Add Content-Length header
+    })
+    return err
 }
 
 func createGlueTable(client *glue.Client) error {
