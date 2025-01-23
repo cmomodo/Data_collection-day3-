@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -18,12 +19,13 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/glue"
 	gluetypes "github.com/aws/aws-sdk-go-v2/service/glue/types"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/joho/godotenv"
 )
 
 var (
 	region          = "us-east-1"
-	bucketName      = "sports-analytics-data-lake"
+	bucketName      = "sports-analytics-data-lake3"
 	glueDBName      = "glue_nba_data_lake"
 	athenaOutputLoc = "s3://%s/athena-results/"
 	apiKey          string
@@ -86,10 +88,30 @@ func main() {
 }
 
 func createS3Bucket(client *s3.Client) error {
-	_, err := client.CreateBucket(context.TODO(), &s3.CreateBucketInput{
+	// Check if the bucket exists
+	_, err := client.HeadBucket(context.TODO(), &s3.HeadBucketInput{
 		Bucket: aws.String(bucketName),
 	})
-	return err
+	if err == nil {
+		log.Printf("Bucket %s already exists", bucketName)
+		return nil
+	}
+
+	var notFound *s3types.NotFound
+	if errors.As(err, &notFound) {
+		// Bucket does not exist, create it
+		_, err = client.CreateBucket(context.TODO(), &s3.CreateBucketInput{
+			Bucket: aws.String(bucketName),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to create bucket: %w", err)
+		}
+		log.Printf("Bucket %s created successfully", bucketName)
+		return nil
+	}
+
+	// Return any other error
+	return fmt.Errorf("failed to check if bucket exists: %w", err)
 }
 
 func createGlueDatabase(client *glue.Client) error {
@@ -100,21 +122,48 @@ func createGlueDatabase(client *glue.Client) error {
 	})
 	return err
 }
-
 func fetchNBAData() ([]map[string]interface{}, error) {
-	resp, err := http.Get(nbaEndpoint)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
+    // Create a new HTTP client and request
+    client := &http.Client{}
+    req, err := http.NewRequest("GET", nbaEndpoint, nil)
+    if err != nil {
+        return nil, fmt.Errorf("failed to create request: %w", err)
+    }
 
-	var data []map[string]interface{}
-	err = json.NewDecoder(resp.Body).Decode(&data)
-	if err != nil {
-		return nil, err
-	}
+    // Inject API key from .env into headers (secure)
+    req.Header.Add("Ocp-Apim-Subscription-Key", apiKey) // Adjust header format as per API docs
 
-	return data, nil
+    // Execute request
+    resp, err := client.Do(req)
+    if err != nil {
+        return nil, fmt.Errorf("API request failed: %w", err)
+    }
+    defer resp.Body.Close()
+
+    // Check for HTTP errors (e.g., 401 Unauthorized)
+    if resp.StatusCode != http.StatusOK {
+        bodyBytes, _ := io.ReadAll(resp.Body)
+        return nil, fmt.Errorf("API returned %d: %s", resp.StatusCode, string(bodyBytes))
+    }
+
+    var result interface{}
+    err = json.NewDecoder(resp.Body).Decode(&result)
+    if err != nil {
+        return nil, err
+    }
+
+    switch data := result.(type) {
+    case []interface{}:
+        var nbaData []map[string]interface{}
+        for _, item := range data {
+            nbaData = append(nbaData, item.(map[string]interface{}))
+        }
+        return nbaData, nil
+    case map[string]interface{}:
+        return []map[string]interface{}{data}, nil
+    default:
+        return nil, fmt.Errorf("unexpected JSON structure")
+    }
 }
 
 func uploadDataToS3(client *s3.Client, bucketName string, data []map[string]interface{}) error {
