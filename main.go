@@ -130,10 +130,10 @@ func uploadDataToS3(client *s3.Client, bucketName string, data []map[string]inte
 func createGlueTable(client *glue.Client) error {
     _, err := client.CreateTable(context.TODO(), &glue.CreateTableInput{
         DatabaseName: aws.String(glueDBName),
-        TableInput: &glue.TableInput{
+        TableInput: &types.TableInput{
             Name: aws.String("nba_data"),
-            StorageDescriptor: &glue.StorageDescriptor{
-                Columns: []*glue.Column{
+            StorageDescriptor: &types.StorageDescriptor{
+                Columns: []types.Column{
                     {Name: aws.String("id"), Type: aws.String("string")},
                     {Name: aws.String("name"), Type: aws.String("string")},
                     {Name: aws.String("stats"), Type: aws.String("string")},
@@ -146,7 +146,6 @@ func createGlueTable(client *glue.Client) error {
     })
     return err
 }
-
 func configureAthena(client *athena.Client) error {
     _, err := client.StartQueryExecution(context.TODO(), &athena.StartQueryExecutionInput{
         QueryExecutionContext: &athena.QueryExecutionContext{
